@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.0",
@@ -20,6 +21,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10",
+    "archiver": "^7.0.1",
     "typescript": "^5"
   }
 }
