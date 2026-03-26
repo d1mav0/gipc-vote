@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [password, setPassword]     = useState('');
   const [loginError, setLoginError] = useState('');
   const [round, setRound]           = useState<RoundData | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [roundName, setRoundName]   = useState('');
   const [competitorText, setCompetitorText] = useState('');
@@ -69,6 +70,7 @@ export default function AdminPage() {
     await fetch('/api/admin/logout', { method: 'POST' });
     setAuthed(false);
     setRound(null);
+    setShowNewForm(false);
   }
 
   async function createRound() {
@@ -86,6 +88,7 @@ export default function AdminPage() {
     });
     setLoading(false);
     if (!res.ok) { setSetupError('Failed to create round.'); return; }
+    setShowNewForm(false);
     await fetchRound();
   }
 
@@ -118,7 +121,7 @@ export default function AdminPage() {
   }
 
   // ── Setup form ──
-  if (!round) {
+  if (!round || showNewForm) {
     return (
       <div className="card admin-layout">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -162,7 +165,7 @@ export default function AdminPage() {
         <div style={{ flex: 1 }} />
         {round.status === 'draft'  && <button className="btn btn-success" onClick={openVoting}>Open voting</button>}
         {round.status === 'open'   && <button className="btn btn-danger"  onClick={closeVoting}>Close voting</button>}
-        {round.status === 'closed' && <button className="btn btn-ghost"   onClick={() => setRound(null)}>New round</button>}
+        {round.status === 'closed' && <button className="btn btn-ghost"   onClick={() => { setShowNewForm(true); setRoundName(''); setCompetitorText(''); setSetupError(''); }}>New round</button>}
       </div>
 
       {/* Results */}
