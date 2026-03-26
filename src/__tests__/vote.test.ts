@@ -8,6 +8,7 @@ vi.mock('@/lib/logger', () => ({
   log: vi.fn(),
   logError: vi.fn(),
   getClientIp: vi.fn().mockReturnValue('1.2.3.4'),
+  geoLookup: vi.fn(),
 }));
 vi.mock('next/headers', () => ({
   cookies: vi.fn(),
@@ -94,14 +95,13 @@ describe('POST /api/vote', () => {
     expect(body.error).toMatch(/invalid competitor/i);
   });
 
-  it('returns 409 when voter has already voted', async () => {
+  it('silently returns 200 when voter has already voted', async () => {
     mockClients({}, [makeVote()]);
     mockCookies('existing-voter-token');
 
     const res = await POST(req('POST', '/api/vote', { competitor: 'Alice Chen' }));
-    expect(res.status).toBe(409);
-    const body = await res.json();
-    expect(body.error).toMatch(/already voted/i);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 
   it('stores the vote and returns 200 on success', async () => {
@@ -148,27 +148,24 @@ describe('POST /api/vote', () => {
     expect(res.status).toBe(500);
   });
 
-  it('logs vote.success with ip, fingerprint, and competitor', async () => {
-    const { log } = await import('@/lib/logger');
+  it('calls geoLookup on successful vote', async () => {
+    const { geoLookup } = await import('@/lib/logger');
     mockClients();
     mockCookies();
 
     await POST(req('POST', '/api/vote', { competitor: 'Carol Müller' }));
 
-    expect(log).toHaveBeenCalledWith(
-      'vote.success',
-      expect.objectContaining({ ip: '1.2.3.4', competitor: 'Carol Müller' }),
-    );
+    expect(geoLookup).toHaveBeenCalledWith('1.2.3.4', expect.any(Function));
   });
 
-  it('logs vote.duplicate when already voted', async () => {
-    const { log } = await import('@/lib/logger');
+  it('calls geoLookup for duplicate votes', async () => {
+    const { geoLookup } = await import('@/lib/logger');
     mockClients({}, [makeVote()]);
     mockCookies('existing-token');
 
     await POST(req('POST', '/api/vote', { competitor: 'Alice Chen' }));
 
-    expect(log).toHaveBeenCalledWith('vote.duplicate', expect.objectContaining({ ip: '1.2.3.4' }));
+    expect(geoLookup).toHaveBeenCalledWith('1.2.3.4', expect.any(Function));
   });
 
   it('logs vote.closed when round is not open', async () => {

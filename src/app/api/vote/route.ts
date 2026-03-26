@@ -3,7 +3,7 @@ import { getTableClient } from '@/lib/tableClient';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
 import { cookies } from 'next/headers';
-import { log, logError, getClientIp } from '@/lib/logger';
+import { log, logError, getClientIp, geoLookup } from '@/lib/logger';
 
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
@@ -46,22 +46,22 @@ export async function POST(req: NextRequest) {
   }
   const voterHash = hashToken(voterToken);
 
-  // Check if already voted
+  // Check if already voted — silent discard (voter always sees /thanks)
   const votesClient = getTableClient('votes');
   const existing = votesClient.listEntities({
     queryOptions: { filter: `voterHash eq '${voterHash}'` },
   });
   for await (const _ of existing) {
-    log('vote.duplicate', { ip, ua, fingerprint: voterHash });
-    const res = NextResponse.json({ error: 'Already voted' }, { status: 409 });
-    return res;
+    geoLookup(ip, geo => log('vote.duplicate', { ip, ua, fingerprint: voterHash, ...geo }));
+    return NextResponse.json({ ok: true });
   }
 
   // Store vote
+  const voteRowKey = uuidv4();
   try {
     await votesClient.createEntity({
       partitionKey: 'vote',
-      rowKey: uuidv4(),
+      rowKey: voteRowKey,
       competitor,
       voterHash,
     });
@@ -70,7 +70,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to store vote' }, { status: 500 });
   }
 
-  log('vote.success', { ip, ua, fingerprint: voterHash, competitor, round: round.name });
+  // Async: attach geo data to vote entity and log
+  geoLookup(ip, geo => {
+    votesClient.updateEntity(
+      { partitionKey: 'vote', rowKey: voteRowKey, ...geo },
+      'Merge',
+    ).catch(() => {});
+    log('vote.success', { ip, ua, fingerprint: voterHash, competitor, round: round.name as string, ...geo });
+  });
 
   const res = NextResponse.json({ ok: true });
   if (isNew) {

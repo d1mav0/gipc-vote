@@ -17,3 +17,17 @@ export function getClientIp(req: Request): string {
   if (xff) return xff.split(',')[0].trim();
   return req.headers.get('x-real-ip') ?? 'unknown';
 }
+
+/** Fire-and-forget IP geolocation via ipinfo.io (free, no key, 50k/month) */
+export function geoLookup(ip: string, onResult: (geo: Record<string, string>) => void): void {
+  if (ip === 'unknown' || ip.startsWith('127.') || ip.startsWith('::1')) return;
+  fetch(`https://ipinfo.io/${ip}/json`, { signal: AbortSignal.timeout(4000) })
+    .then(r => r.ok ? r.json() : {})
+    .then((data: Record<string, string>) => onResult({
+      country:  data.country  ?? '',
+      region:   data.region   ?? '',
+      city:     data.city     ?? '',
+      org:      data.org      ?? '',
+    }))
+    .catch(() => {}); // swallow — geo is best-effort
+}

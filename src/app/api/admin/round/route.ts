@@ -21,15 +21,35 @@ export async function GET() {
   }
 
   const competitors: string[] = JSON.parse(round.competitors as string);
+  const excludedCountries: string[] = JSON.parse((round.excludedCountries as string) || '[]');
 
-  // Tally votes
+  // Collect all votes with location data
   const votesClient = getTableClient('votes');
+  const allVotes: Array<{ competitor: string; country: string }> = [];
+  for await (const vote of votesClient.listEntities()) {
+    allVotes.push({
+      competitor: vote.competitor as string,
+      country:    (vote.country as string) || '',
+    });
+  }
+
+  // Location breakdown
+  const locationMap: Record<string, number> = {};
+  for (const v of allVotes) {
+    const code = v.country || '';
+    locationMap[code] = (locationMap[code] ?? 0) + 1;
+  }
+  const locations = Object.entries(locationMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, count]) => ({ code, count, excluded: excludedCountries.includes(code) }));
+
+  // Filtered counts (exclude votes from excluded countries)
   const counts: Record<string, number> = {};
   for (const c of competitors) counts[c] = 0;
-
-  for await (const vote of votesClient.listEntities()) {
-    const c = vote.competitor as string;
-    if (c in counts) counts[c]++;
+  for (const v of allVotes) {
+    if (v.competitor in counts && !excludedCountries.includes(v.country)) {
+      counts[v.competitor]++;
+    }
   }
 
   return NextResponse.json({
@@ -37,8 +57,11 @@ export async function GET() {
       name: round.name,
       status: round.status,
       competitors,
+      excludedCountries,
       counts,
-      total: Object.values(counts).reduce((a, b) => a + b, 0),
+      total:    Object.values(counts).reduce((a, b) => a + b, 0),
+      totalRaw: allVotes.length,
+      locations,
     },
   });
 }
@@ -67,6 +90,7 @@ export async function POST(req: NextRequest) {
     rowKey: 'current',
     name,
     competitors: JSON.stringify(competitors),
+    excludedCountries: '[]',
     status: 'draft',
   }, 'Replace');
 
